@@ -4,8 +4,8 @@ use std::{collections::BTreeSet, error::Error, fmt};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Type {
     Nil,
-    String,
     Int,
+    String,
     OneOf(BTreeSet<Value>),
 }
 
@@ -14,8 +14,8 @@ impl Type {
         match (self, val) {
             // Good type checks
             (Type::Nil, Value::Nil) => (),
-            (Type::String, Value::String(_)) => (),
             (Type::Int, Value::Int(_)) => (),
+            (Type::String, Value::String(_)) => (),
             (Type::OneOf(vals), val) if vals.contains(val) => (),
 
             // All else fails
@@ -30,8 +30,8 @@ impl fmt::Display for Type {
         use Type::*;
         match self {
             Nil => f.write_str("Nil")?,
-            String => f.write_str("String")?,
             Int => f.write_str("Int")?,
+            String => f.write_str("String")?,
             OneOf(vals) => {
                 f.write_str("OneOf(")?;
                 let mut first = true;
@@ -50,7 +50,7 @@ impl fmt::Display for Type {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypeMismatch(String);
 
 impl TypeMismatch {
@@ -76,8 +76,8 @@ pub struct Signature {
 #[derive(Debug, Clone, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
 pub enum Value {
     Nil,
-    String(String),
     Int(i64),
+    String(String),
 }
 
 pub trait InferType {
@@ -86,6 +86,13 @@ pub trait InferType {
 
 pub trait Encode {
     fn encode(typ: &Type, val: Self) -> Result<Value, TypeMismatch>;
+
+    fn encode_infer(val: Self) -> Value
+    where
+        Self: InferType + Sized,
+    {
+        Self::encode(&Self::infer_type(), val).expect("Inferred type was wrong")
+    }
 }
 
 pub trait Decode: Sized {
@@ -107,7 +114,7 @@ macro_rules! impl_encode_decode {
                 Ok(val)
             }
         }
-        
+
         impl Decode for $rust_type {
             fn decode(typ: &Type, val: Value) -> Result<Self, TypeMismatch> {
                 typ.check(&val)?;
@@ -121,5 +128,19 @@ macro_rules! impl_encode_decode {
 }
 
 impl_encode_decode!((), Type::Nil, () => Value::Nil, Value::Nil => ());
-impl_encode_decode!(String, Type::String, s => Value::String(s), Value::String(s) => s);
 impl_encode_decode!(i64, Type::Int, n => Value::Int(n), Value::Int(n) => n);
+impl_encode_decode!(String, Type::String, s => Value::String(s), Value::String(s) => s);
+
+impl InferType for &str {
+    fn infer_type() -> Type {
+        Type::String
+    }
+}
+
+impl Encode for &str {
+    fn encode(typ: &Type, s: Self) -> Result<Value, TypeMismatch> {
+        let val = Value::String(s.to_string());
+        typ.check(&val)?;
+        Ok(val)
+    }
+}
