@@ -1,21 +1,29 @@
 // #![warn(unused_crate_dependencies)]
-#![allow(unused_imports, dead_code, unused_variables)]
+// #![allow(unused_imports, dead_code, unused_variables)]
 
 pub mod server;
 pub mod types;
 
+use futures::future::{ready, BoxFuture, Ready};
 use std::future::Future;
-use types::{Decode, Encode};
+use types::{Decode, Encode, Type, Value};
 
-pub trait RpcFunction<Domain, Range>
-where
-    Domain: Decode,
-    Range: Encode,
-{
-    type RangeFut: Future<Output = Range>;
-    fn call(&self, args: Domain) -> Self::RangeFut;
+pub trait RpcFunction {
+    type Domain: Decode;
+    type Range: Encode;
+    type RangeFut: Future<Output = Self::Range>;
+
+    fn call(&self, args: Self::Domain) -> Self::RangeFut;
 }
 
-struct Ping;
+pub struct Ping;
 
-impl RpcFunction<(), ()> for Ping {}
+impl RpcFunction for Ping {
+    type Domain = ();
+    type Range = ();
+    type RangeFut = Ready<()>;
+
+    fn call(&self, args: ()) -> Self::RangeFut {
+        ready(())
+    }
+}

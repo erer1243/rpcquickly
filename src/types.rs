@@ -44,17 +44,26 @@ pub enum Value {
     Int(i64),
 }
 
+pub trait Typed {
+    fn rpc_type() -> Type;
+}
+
 pub trait Encode {
     fn encode(val: Self) -> Value;
 }
 
 pub trait Decode: Sized {
-    fn rpc_type() -> Type;
-    fn decode(val: Value) -> Result<Self, TypeMismatch>;
+    fn decode(typ: Type, val: Value) -> Result<Self, TypeMismatch>;
 }
 
-macro_rules! impl_type_conversions {
+macro_rules! impl_encode_decode {
     ($rust_type:ty, $rpc_type:expr, $encode_name:pat => $encode_expr:expr, $($from_rpc_arm:tt)*) => {
+        impl Typed for $rust_type {
+            fn rpc_type() -> Type {
+                $rpc_type
+            }
+        }
+
         impl Encode for $rust_type {
             fn encode($encode_name: $rust_type) -> Value {
                 $encode_expr
@@ -62,23 +71,19 @@ macro_rules! impl_type_conversions {
         }
 
         impl Decode for $rust_type {
-            fn rpc_type() -> Type {
-                $rpc_type
-            }
-
-            fn decode(val: Value) -> Result<Self, TypeMismatch> {
+            fn decode(typ: Type, val: Value) -> Result<Self, TypeMismatch> {
                 Ok(match val {
                     $($from_rpc_arm)*,
-                    _ => return Err(TypeMismatch::new(val, Self::rpc_type()))
+                    _ => return Err(TypeMismatch::new(val, <Self as Typed>::rpc_type()))
                 })
             }
         }
     };
 }
 
-impl_type_conversions!((), Type::Nil, () => Value::Nil, Value::Nil => ());
-impl_type_conversions!(String, Type::String, s => Value::String(s), Value::String(s) => s);
-impl_type_conversions!(i64, Type::Int, n => Value::Int(n), Value::Int(n) => n);
+impl_encode_decode!((), Type::Nil, () => Value::Nil, Value::Nil => ());
+impl_encode_decode!(String, Type::String, s => Value::String(s), Value::String(s) => s);
+impl_encode_decode!(i64, Type::Int, n => Value::Int(n), Value::Int(n) => n);
 
 #[derive(Debug, Clone)]
 pub struct TypeMismatch {
