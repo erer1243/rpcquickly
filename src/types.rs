@@ -11,7 +11,7 @@ pub enum Type {
 
 impl Type {
     fn check(&self, val: &Value) -> Result<(), TypeMismatch> {
-        Ok(match (self, val) {
+        match (self, val) {
             // Good type checks
             (Type::Nil, Value::Nil) => (),
             (Type::String, Value::String(_)) => (),
@@ -20,7 +20,8 @@ impl Type {
 
             // All else fails
             _ => Err(TypeMismatch::new(self, val))?,
-        })
+        };
+        Ok(())
     }
 }
 
@@ -84,7 +85,7 @@ pub trait InferType {
 }
 
 pub trait Encode {
-    fn encode(val: Self) -> Value;
+    fn encode(typ: &Type, val: Self) -> Result<Value, TypeMismatch>;
 }
 
 pub trait Decode: Sized {
@@ -100,11 +101,13 @@ macro_rules! impl_encode_decode {
         }
 
         impl Encode for $rust_type {
-            fn encode($encode_name: $rust_type) -> Value {
-                $encode_expr
+            fn encode(typ: &Type, $encode_name: $rust_type) -> Result<Value, TypeMismatch> {
+                let val = $encode_expr;
+                typ.check(&val)?;
+                Ok(val)
             }
         }
-
+        
         impl Decode for $rust_type {
             fn decode(typ: &Type, val: Value) -> Result<Self, TypeMismatch> {
                 typ.check(&val)?;

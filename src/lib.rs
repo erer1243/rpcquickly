@@ -4,9 +4,8 @@
 pub mod server;
 pub mod types;
 
-use futures::future::{ready, BoxFuture, Ready};
 use std::future::Future;
-use types::{Decode, Encode, InferType, Signature, Type, TypeMismatch, Value};
+use types::{Decode, Encode, InferType, Signature};
 
 pub trait RpcFunction {
     type Domain: Decode;
@@ -35,21 +34,5 @@ where
             domain: RFn::Domain::infer_type(),
             range: RFn::Range::infer_type(),
         }
-    }
-}
-
-pub struct Ping;
-
-impl RpcFunction for Ping {
-    type Domain = ();
-    type Range = ();
-    type RangeFut = Ready<()>;
-
-    fn name(&self) -> &str {
-        "Ping"
-    }
-
-    fn call(&self, _args: ()) -> Self::RangeFut {
-        ready(())
     }
 }

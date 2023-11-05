@@ -1,23 +1,18 @@
 use crate::{
-    types::{Decode, Encode, Signature, Type, TypeMismatch, Value},
+    types::{Decode, Encode, Signature, TypeMismatch, Value},
     InferSignature, RpcFunction,
 };
-use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, Stream};
-use std::{
-    collections::BTreeMap,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use futures::{future::BoxFuture, FutureExt};
+use std::collections::BTreeMap;
 
+#[derive(Default)]
 pub struct Server {
     rpc_functions: BTreeMap<String, Box<dyn ObjectSafeRpcFunction>>,
 }
 
 impl Server {
     pub fn new() -> Self {
-        Self {
-            rpc_functions: BTreeMap::new(),
-        }
+        Self::default()
     }
 
     pub fn push_func_infer_signature<RFn>(&mut self, rfn: RFn)
@@ -38,26 +33,26 @@ impl Server {
     }
 }
 
+type TypeCheckedValueFuture<'a> = Result<BoxFuture<'a, Result<Value, TypeMismatch>>, TypeMismatch>;
+
 trait ObjectSafeRpcFunction {
     fn name(&self) -> &str;
-    fn call(&self, args: Value) -> Result<BoxFuture<Value>, TypeMismatch>;
+    fn call(&self, args: Value) -> TypeCheckedValueFuture;
 }
 
 struct TypedRpcFunction<RFn> {
     rpc_function: RFn,
-    domain: Type,
-    range: Type,
+    signature: Signature,
 }
 
 impl<RFn> TypedRpcFunction<RFn>
 where
     RFn: RpcFunction,
 {
-    fn new(rpc_function: RFn, Signature { domain, range }: Signature) -> Self {
+    fn new(rpc_function: RFn, signature: Signature) -> Self {
         Self {
             rpc_function,
-            domain,
-            range,
+            signature,
         }
     }
 }
@@ -71,9 +66,13 @@ where
         self.rpc_function.name()
     }
 
-    fn call(&self, args: Value) -> Result<BoxFuture<Value>, TypeMismatch> {
-        let decoded_args = RFn::Domain::decode(&self.domain, args)?;
-        let fut = self.rpc_function.call(decoded_args).map(RFn::Range::encode);
+    fn call(&self, args: Value) -> TypeCheckedValueFuture {
+        let decoded_args = RFn::Domain::decode(&self.signature.domain, args)?;
+        let range = self.signature.range.clone();
+        let fut = self
+            .rpc_function
+            .call(decoded_args)
+            .map(move |retval| RFn::Range::encode(&range, retval));
         Ok(Box::pin(fut))
     }
 }
