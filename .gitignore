@@ -1,4 +1,4 @@
 /target
 /Cargo.lock
 .ipynb_checkpoints
-scratch.ipynb
+*.ipynb
