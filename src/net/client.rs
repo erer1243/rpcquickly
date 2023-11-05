@@ -1,8 +1,5 @@
-use crate::{
-    types::{Encode, InferType},
-};
-
 use super::{Request, Response};
+use crate::types::{Encode, InferType};
 use async_bincode::{tokio::AsyncBincodeStream, AsyncDestination};
 use futures::{SinkExt, StreamExt};
 use std::{io, net::SocketAddr};

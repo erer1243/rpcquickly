@@ -1,6 +1,6 @@
 use crate::{
+    calling::Dispatcher,
     net::{Request, Response},
-    runner::RpcFunctionRunner,
     types::Signature,
     InferSignature, RpcFunction,
 };
@@ -12,7 +12,7 @@ use tokio::{io::BufStream, net::TcpListener, task};
 
 #[derive(Default)]
 pub struct Server {
-    runner: RpcFunctionRunner,
+    runner: Dispatcher,
 }
 
 impl Server {
@@ -38,24 +38,12 @@ impl Server {
                 AsyncBincodeStream::<_, Request, Response, _>::from(BufStream::new(sock))
                     .for_async();
 
-            task::spawn(async move {
-                if let Some(Ok(request)) = sock.next().await {
-                    let response = arc_self.handle_request(request).await;
-                    _ = sock.send(response).await;
-                }
-            });
-        }
-    }
-
-    delegate! {
-        to self.runner {
-            pub fn push_func_infer_signature<RFn>(&mut self, rfn: RFn)
-            where
-                RFn: RpcFunction + InferSignature + Send + Sync + 'static;
-
-            pub fn push_func_explicit_signature<RFn>(&mut self, rpc_function: RFn, signature: Signature)
-            where
-                RFn: RpcFunction + Send + Sync + 'static;
+            // task::spawn(async move {
+            //     if let Some(Ok(request)) = sock.next().await {
+            //         let response = arc_self.handle_request(request).await;
+            //         _ = sock.send(response).await;
+            //     }
+            // });
         }
     }
 }

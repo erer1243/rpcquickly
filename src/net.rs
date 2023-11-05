@@ -2,7 +2,7 @@ pub mod client;
 pub mod server;
 
 use crate::{
-    runner::{CallResult, RpcFunctionInfo},
+    calling::{CallResult, RpcFunctionInfo},
     types::Value,
 };
 use serde::{Deserialize, Serialize};
