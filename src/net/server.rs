@@ -1,11 +1,8 @@
 use crate::{
     calling::Dispatcher,
     net::{Request, Response},
-    types::Signature,
-    InferSignature, RpcFunction,
 };
 use async_bincode::tokio::AsyncBincodeStream;
-use delegate::delegate;
 use futures::{SinkExt, StreamExt};
 use std::{io, net::Ipv4Addr, sync::Arc};
 use tokio::{io::BufStream, net::TcpListener, task};
@@ -38,12 +35,12 @@ impl Server {
                 AsyncBincodeStream::<_, Request, Response, _>::from(BufStream::new(sock))
                     .for_async();
 
-            // task::spawn(async move {
-            //     if let Some(Ok(request)) = sock.next().await {
-            //         let response = arc_self.handle_request(request).await;
-            //         _ = sock.send(response).await;
-            //     }
-            // });
+            task::spawn(async move {
+                if let Some(Ok(request)) = sock.next().await {
+                    let response = arc_self.handle_request(request).await;
+                    _ = sock.send(response).await;
+                }
+            });
         }
     }
 }

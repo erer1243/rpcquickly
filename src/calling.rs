@@ -2,16 +2,15 @@ use crate::{
     types::{Decode, Encode, Signature, TypeMismatch, Value},
     InferSignature, RpcFunction,
 };
-use delegate::delegate;
-use futures::future::{BoxFuture, LocalBoxFuture};
+use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, pin::Pin, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 use thiserror::Error;
 
 /// A set of [`RpcFunction`]s that can be called by name and given [`Value`]s as arguments.
 #[derive(Default)]
 pub struct Dispatcher {
-    rpc_functions: BTreeMap<String, Arc<dyn DynamicRpcFunction>>,
+    rpc_functions: BTreeMap<String, Arc<dyn DynamicRpcFunction + Send + Sync + 'static>>,
 }
 
 impl Dispatcher {
@@ -21,10 +20,27 @@ impl Dispatcher {
 
     pub fn add<RFn>(&mut self, rfn: RFn)
     where
-        RFn: RpcFunction + 'static,
+        RFn: RpcFunction + Send + Sync + 'static,
+        RFn::Domain: Send,
     {
-        let name = rfn.name().to_owned();
-        let dyn_rfn = Arc::new(CallableRpcFunction::new(rfn));
+        self.insert(CallableRpcFunction::new(rfn));
+    }
+
+    pub fn add_infer_signature<RFn>(&mut self, rfn: RFn)
+    where
+        RFn: RpcFunction + InferSignature + Send + Sync + 'static,
+        RFn::Domain: Send,
+    {
+        self.insert(CallableRpcFunction::new_infer_signature(rfn));
+    }
+
+    fn insert<RFn>(&mut self, crfn: CallableRpcFunction<RFn>)
+    where
+        RFn: RpcFunction + Send + Sync + 'static,
+        RFn::Domain: Send,
+    {
+        let name = crfn.name().to_owned();
+        let dyn_rfn = Arc::new(crfn);
         self.rpc_functions.insert(name, dyn_rfn);
     }
 
@@ -50,6 +66,7 @@ pub struct RpcFunctionInfo {
 pub enum DispatchError {
     #[error("no function with given name")]
     NoSuchFunction,
+
     #[error("calling function: {0}")]
     CallError(#[from] CallError),
 }
@@ -58,20 +75,26 @@ pub enum DispatchError {
 pub enum CallError {
     #[error("domain type mismatch: {0}")]
     Domain(TypeMismatch),
+
     #[error("range type mismatch: {0}")]
     Range(TypeMismatch),
 }
 
-pub struct CallableRpcFunction<RFn> {
+struct CallableRpcFunction<RFn>
+where
+    RFn: RpcFunction + Send + Sync,
+    RFn::Domain: Send,
+{
     rpc_function: RFn,
     signature: Signature,
 }
 
 impl<RFn> CallableRpcFunction<RFn>
 where
-    RFn: RpcFunction,
+    RFn: RpcFunction + Send + Sync,
+    RFn::Domain: Send,
 {
-    pub fn new(rpc_function: RFn) -> Self {
+    fn new(rpc_function: RFn) -> Self {
         let signature = rpc_function.signature().unwrap();
         Self {
             rpc_function,
@@ -79,7 +102,7 @@ where
         }
     }
 
-    pub fn new_infer_signature(rpc_function: RFn) -> Self
+    fn new_infer_signature(rpc_function: RFn) -> Self
     where
         RFn: InferSignature,
     {
@@ -89,11 +112,11 @@ where
         }
     }
 
-    pub fn name(&self) -> &str {
+    fn name(&self) -> &str {
         self.rpc_function.name()
     }
 
-    pub async fn call(&self, args: Value) -> Result<Value, CallError> {
+    async fn call(&self, args: Value) -> Result<Value, CallError> {
         let Signature { domain, range } = &self.signature;
         let decoded_args = RFn::Domain::decode(domain, args).map_err(CallError::Domain)?;
         let retval = self.rpc_function.call(decoded_args).await;
@@ -102,22 +125,21 @@ where
     }
 }
 
-type TypeCheckResult<T> = Result<T, TypeMismatch>;
-
 trait DynamicRpcFunction {
     fn name(&self) -> &str;
-    fn call(&self, args: Value) -> LocalBoxFuture<Result<Value, CallError>>;
+    fn call(&self, args: Value) -> BoxFuture<Result<Value, CallError>>;
 }
 
 impl<RFn> DynamicRpcFunction for CallableRpcFunction<RFn>
 where
-    RFn: RpcFunction,
+    RFn: RpcFunction + Send + Sync,
+    RFn::Domain: Send,
 {
     fn name(&self) -> &str {
         self.name()
     }
 
-    fn call(&self, args: Value) -> LocalBoxFuture<Result<Value, CallError>> {
+    fn call(&self, args: Value) -> BoxFuture<Result<Value, CallError>> {
         Box::pin(self.call(args))
     }
 }
