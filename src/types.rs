@@ -7,6 +7,7 @@ pub enum Type {
     Int,
     String,
     OneOf(BTreeSet<Value>),
+    Any,
 }
 
 impl Type {
@@ -17,6 +18,7 @@ impl Type {
             (Type::Int, Value::Int(_)) => (),
             (Type::String, Value::String(_)) => (),
             (Type::OneOf(vals), val) if vals.contains(val) => (),
+            (Type::Any, _) => (),
 
             // All else fails
             _ => Err(TypeMismatch::new(self, val))?,
@@ -45,6 +47,7 @@ impl fmt::Display for Type {
                 }
                 f.write_str(")")?;
             }
+            Any => f.write_str("Any")?,
         }
         Ok(())
     }
@@ -120,6 +123,7 @@ macro_rules! impl_encode_decode {
                 typ.check(&val)?;
                 Ok(match val {
                     $($from_rpc_arm)*,
+                    #[allow(unreachable_patterns)]
                     _ => unreachable!("Type checking is incorrect")
                 })
             }
@@ -130,6 +134,7 @@ macro_rules! impl_encode_decode {
 impl_encode_decode!((), Type::Nil, () => Value::Nil, Value::Nil => ());
 impl_encode_decode!(i64, Type::Int, n => Value::Int(n), Value::Int(n) => n);
 impl_encode_decode!(String, Type::String, s => Value::String(s), Value::String(s) => s);
+impl_encode_decode!(Value, Type::Any, v => v, v => v);
 
 impl InferType for &str {
     fn infer_type() -> Type {
