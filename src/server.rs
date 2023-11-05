@@ -1,21 +1,16 @@
 use crate::RpcFunction;
 use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, Stream};
-use pin_project_lite::pin_project;
 use std::{
     pin::Pin,
     task::{Context, Poll},
 };
 
-pin_project! {
-    pub struct RpcFunctionCallManager<'a, RFn, CallerId>
-    where
-        RFn: RpcFunction,
-    {
-        rpc_function: RFn,
-
-        #[pin]
-        calls: FuturesUnordered<BoxFuture<'a, (CallerId, RFn::Range)>>,
-    }
+pub struct RpcFunctionCallManager<'a, RFn, CallerId>
+where
+    RFn: RpcFunction,
+{
+    rpc_function: RFn,
+    calls: FuturesUnordered<BoxFuture<'a, (CallerId, RFn::Range)>>,
 }
 
 impl<'a, RFn, CallerId> RpcFunctionCallManager<'a, RFn, CallerId>
@@ -44,6 +39,7 @@ impl<'a, RFn: RpcFunction, CallerId> Stream for RpcFunctionCallManager<'a, RFn, 
     type Item = (CallerId, RFn::Range);
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.project().calls.poll_next(cx)
+        let calls = unsafe { Pin::map_unchecked_mut(self, |mgr| &mut mgr.calls) };
+        calls.poll_next(cx)
     }
 }

@@ -1,5 +1,5 @@
 // #![warn(unused_crate_dependencies)]
-// #![allow(unused_imports, dead_code, unused_variables)]
+#![allow(unused_imports, dead_code, unused_variables)]
 
 pub mod server;
 pub mod types;
