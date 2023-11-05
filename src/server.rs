@@ -1,45 +1,79 @@
-use crate::RpcFunction;
+use crate::{
+    types::{Decode, Encode, Signature, Type, TypeMismatch, Value},
+    InferSignature, RpcFunction,
+};
 use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, Stream};
 use std::{
+    collections::BTreeMap,
     pin::Pin,
     task::{Context, Poll},
 };
 
-pub struct RpcFunctionCallManager<'a, RFn, CallerId>
-where
-    RFn: RpcFunction,
-{
-    rpc_function: RFn,
-    calls: FuturesUnordered<BoxFuture<'a, (CallerId, RFn::Range)>>,
+pub struct Server {
+    rpc_functions: BTreeMap<String, Box<dyn ObjectSafeRpcFunction>>,
 }
 
-impl<'a, RFn, CallerId> RpcFunctionCallManager<'a, RFn, CallerId>
-where
-    RFn: RpcFunction,
-    RFn::RangeFut: Send + 'a,
-    CallerId: Send + 'a,
-{
-    pub fn new(rpc_function: RFn) -> Self {
+impl Server {
+    pub fn new() -> Self {
         Self {
-            rpc_function,
-            calls: FuturesUnordered::new(),
+            rpc_functions: BTreeMap::new(),
         }
     }
 
-    pub fn call(&self, caller_id: CallerId, args: RFn::Domain) {
-        let fut = self
-            .rpc_function
-            .call(args)
-            .map(move |retval| (caller_id, retval));
-        self.calls.push(Box::pin(fut));
+    pub fn push_func_infer_signature<RFn>(&mut self, rfn: RFn)
+    where
+        RFn: RpcFunction + InferSignature + 'static,
+    {
+        let sig = RFn::infer_signature();
+        self.push_func_explicit_signature(rfn, sig);
+    }
+
+    pub fn push_func_explicit_signature<RFn>(&mut self, rfn: RFn, signature: Signature)
+    where
+        RFn: RpcFunction + 'static,
+    {
+        let name = rfn.name().to_owned();
+        let typed_rpc_function = Box::new(TypedRpcFunction::new(rfn, signature));
+        self.rpc_functions.insert(name, typed_rpc_function);
     }
 }
 
-impl<'a, RFn: RpcFunction, CallerId> Stream for RpcFunctionCallManager<'a, RFn, CallerId> {
-    type Item = (CallerId, RFn::Range);
+trait ObjectSafeRpcFunction {
+    fn name(&self) -> &str;
+    fn call(&self, args: Value) -> Result<BoxFuture<Value>, TypeMismatch>;
+}
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let calls = unsafe { Pin::map_unchecked_mut(self, |mgr| &mut mgr.calls) };
-        calls.poll_next(cx)
+struct TypedRpcFunction<RFn> {
+    rpc_function: RFn,
+    domain: Type,
+    range: Type,
+}
+
+impl<RFn> TypedRpcFunction<RFn>
+where
+    RFn: RpcFunction,
+{
+    fn new(rpc_function: RFn, Signature { domain, range }: Signature) -> Self {
+        Self {
+            rpc_function,
+            domain,
+            range,
+        }
+    }
+}
+
+impl<RFn> ObjectSafeRpcFunction for TypedRpcFunction<RFn>
+where
+    RFn: RpcFunction,
+    RFn::RangeFut: Send,
+{
+    fn name(&self) -> &str {
+        self.rpc_function.name()
+    }
+
+    fn call(&self, args: Value) -> Result<BoxFuture<Value>, TypeMismatch> {
+        let decoded_args = RFn::Domain::decode(&self.domain, args)?;
+        let fut = self.rpc_function.call(decoded_args).map(RFn::Range::encode);
+        Ok(Box::pin(fut))
     }
 }

@@ -1,51 +1,86 @@
 use serde::{Deserialize, Serialize};
-use std::{error::Error, fmt};
+use std::{collections::BTreeSet, error::Error, fmt};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Type {
     Nil,
     String,
     Int,
+    OneOf(BTreeSet<Value>),
 }
 
 impl Type {
-    fn name(&self) -> &'static str {
-        use Type::*;
-        match self {
-            Nil => "Nil",
-            String => "String",
-            Int => "Int",
-        }
+    fn check(&self, val: &Value) -> Result<(), TypeMismatch> {
+        Ok(match (self, val) {
+            // Good type checks
+            (Type::Nil, Value::Nil) => (),
+            (Type::String, Value::String(_)) => (),
+            (Type::Int, Value::Int(_)) => (),
+            (Type::OneOf(vals), val) if vals.contains(val) => (),
+
+            // All else fails
+            _ => Err(TypeMismatch::new(self, val))?,
+        })
     }
 }
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(self.name())?;
-        // if let Type::Enum { values } = self {
-        //     f.write_str("(")?;
-        //     #[allow(unstable_name_collisions)]
-        //     values
-        //         .iter()
-        //         .map(|s| s.as_str())
-        //         .intersperse(", ")
-        //         .map(|s| f.write_str(s))
-        //         .collect::<fmt::Result>()?;
-        //     f.write_str(")")?;
-        // }
+        use Type::*;
+        match self {
+            Nil => f.write_str("Nil")?,
+            String => f.write_str("String")?,
+            Int => f.write_str("Int")?,
+            OneOf(vals) => {
+                f.write_str("OneOf(")?;
+                let mut first = true;
+                for v in vals {
+                    write!(f, "{v:?}")?;
+                    if first {
+                        first = false;
+                    } else {
+                        f.write_str(", ")?;
+                    }
+                }
+                f.write_str(")")?;
+            }
+        }
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone)]
+pub struct TypeMismatch(String);
+
+impl TypeMismatch {
+    fn new(typ: &Type, val: &Value) -> Self {
+        Self(format!("Type mismatch: {val:?} :/: {typ}"))
+    }
+}
+
+impl fmt::Display for TypeMismatch {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl Error for TypeMismatch {}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Signature {
+    pub domain: Type,
+    pub range: Type,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
 pub enum Value {
     Nil,
     String(String),
     Int(i64),
 }
 
-pub trait Typed {
-    fn rpc_type() -> Type;
+pub trait InferType {
+    fn infer_type() -> Type;
 }
 
 pub trait Encode {
@@ -53,14 +88,14 @@ pub trait Encode {
 }
 
 pub trait Decode: Sized {
-    fn decode(typ: Type, val: Value) -> Result<Self, TypeMismatch>;
+    fn decode(typ: &Type, val: Value) -> Result<Self, TypeMismatch>;
 }
 
 macro_rules! impl_encode_decode {
-    ($rust_type:ty, $rpc_type:expr, $encode_name:pat => $encode_expr:expr, $($from_rpc_arm:tt)*) => {
-        impl Typed for $rust_type {
-            fn rpc_type() -> Type {
-                $rpc_type
+    ($rust_type:ty, $infer_type:expr, $encode_name:pat => $encode_expr:expr, $($from_rpc_arm:tt)*) => {
+        impl InferType for $rust_type {
+            fn infer_type() -> Type {
+                $infer_type
             }
         }
 
@@ -71,10 +106,11 @@ macro_rules! impl_encode_decode {
         }
 
         impl Decode for $rust_type {
-            fn decode(_typ: Type, val: Value) -> Result<Self, TypeMismatch> {
+            fn decode(typ: &Type, val: Value) -> Result<Self, TypeMismatch> {
+                typ.check(&val)?;
                 Ok(match val {
                     $($from_rpc_arm)*,
-                    _ => return Err(TypeMismatch::new(val, <Self as Typed>::rpc_type()))
+                    _ => unreachable!("Type checking is incorrect")
                 })
             }
         }
@@ -84,26 +120,3 @@ macro_rules! impl_encode_decode {
 impl_encode_decode!((), Type::Nil, () => Value::Nil, Value::Nil => ());
 impl_encode_decode!(String, Type::String, s => Value::String(s), Value::String(s) => s);
 impl_encode_decode!(i64, Type::Int, n => Value::Int(n), Value::Int(n) => n);
-
-#[derive(Debug, Clone)]
-pub struct TypeMismatch {
-    value: Value,
-    expected_type: Type,
-}
-
-impl TypeMismatch {
-    fn new(value: Value, expected_type: Type) -> Self {
-        Self {
-            value,
-            expected_type,
-        }
-    }
-}
-
-impl fmt::Display for TypeMismatch {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Type error: {:?} :/: {}", self.value, self.expected_type)
-    }
-}
-
-impl Error for TypeMismatch {}
