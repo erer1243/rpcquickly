@@ -26,7 +26,7 @@ impl RpcFunction for Hello {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let mut server = Server::new();
-    server.push_func_infer_signature(Hello);
+    server.add_infer_signature(Hello);
     task::spawn(server.serve_tcp(8888));
     tokio::time::sleep(Duration::from_secs_f32(0.01)).await;
 
