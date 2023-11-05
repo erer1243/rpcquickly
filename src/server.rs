@@ -1,16 +1,7 @@
-use crate::{
-    types::{Decode, Encode},
-    RpcFunction,
-};
-use futures::{
-    future::{BoxFuture, Map},
-    stream::{FuturesUnordered, Next, NextIfEq},
-    FutureExt, Stream, StreamExt,
-};
+use crate::RpcFunction;
+use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, Stream};
 use pin_project_lite::pin_project;
 use std::{
-    collections::HashMap,
-    future::Future,
     pin::Pin,
     task::{Context, Poll},
 };

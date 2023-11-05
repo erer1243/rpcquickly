@@ -4,9 +4,9 @@
 pub mod server;
 pub mod types;
 
-use futures::future::{ready, BoxFuture, Ready};
+use futures::future::{ready, Ready};
 use std::future::Future;
-use types::{Decode, Encode, Type, Value};
+use types::{Decode, Encode};
 
 pub trait RpcFunction {
     type Domain: Decode;
@@ -23,7 +23,7 @@ impl RpcFunction for Ping {
     type Range = ();
     type RangeFut = Ready<()>;
 
-    fn call(&self, args: ()) -> Self::RangeFut {
+    fn call(&self, _args: ()) -> Self::RangeFut {
         ready(())
     }
 }

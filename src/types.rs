@@ -71,7 +71,7 @@ macro_rules! impl_encode_decode {
         }
 
         impl Decode for $rust_type {
-            fn decode(typ: Type, val: Value) -> Result<Self, TypeMismatch> {
+            fn decode(_typ: Type, val: Value) -> Result<Self, TypeMismatch> {
                 Ok(match val {
                     $($from_rpc_arm)*,
                     _ => return Err(TypeMismatch::new(val, <Self as Typed>::rpc_type()))
