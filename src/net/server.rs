@@ -33,11 +33,12 @@ impl Server {
         }
     }
 
-    async fn handle_request(self: Arc<Self>, req: Request) -> Response {
+    async fn handle_request(self: &Arc<Self>, req: Request) -> Response {
         match req {
             Request::Ping => Response::Ping,
             Request::Call { name, args } => Response::Call(self.dispatcher.call(&name, args).await),
-            _ => Response::Other("unimplemented".to_owned()),
+            Request::RpcFunctions => Response::RpcFunctions(self.dispatcher.rpc_functions()),
+            // _ => Response::Other("unimplemented".to_owned()),
         }
     }
 
@@ -52,7 +53,7 @@ impl Server {
                     .for_async();
 
             task::spawn(async move {
-                if let Some(Ok(request)) = sock.next().await {
+                while let Some(Ok(request)) = sock.next().await {
                     let response = arc_self.handle_request(request).await;
                     _ = sock.send(response).await;
                 }

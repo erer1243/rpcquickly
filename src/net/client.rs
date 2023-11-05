@@ -1,5 +1,5 @@
 use super::{Request, Response};
-use crate::types::{Encode, InferType};
+use crate::types::{Decode, Encode, InferType};
 use async_bincode::{tokio::AsyncBincodeStream, AsyncDestination};
 use futures::{SinkExt, StreamExt};
 use std::{io, net::SocketAddr};
@@ -29,15 +29,30 @@ impl Client {
         Ok(resp)
     }
 
-    pub async fn ping(&self) {
-        println!("{:?}", self.send_recv(Request::Ping).await);
+    pub async fn ping(&self) -> Result<(), String> {
+        let resp = self.send_recv(Request::Ping).await?;
+        match resp {
+            Response::Ping => Ok(()),
+            other => Err(format!("Unexpected response: {other:?}")),
+        }
     }
 
-    pub async fn call<Domain: Encode + InferType>(&self, name: &str, args: Domain) {
+    pub async fn call<Domain, Range>(&self, name: &str, args: Domain) -> Result<Range, String>
+    where
+        Domain: Encode + InferType,
+        Range: Decode + InferType,
+    {
         let req = Request::Call {
             name: name.to_string(),
             args: Domain::encode_infer(args),
         };
-        println!("{:?}", self.send_recv(req).await);
+        let resp = self.send_recv(req).await?;
+        match resp {
+            Response::Call(res) => match res {
+                Ok(val) => Range::decode(&Range::infer_type(), val).map_err(|e| e.to_string()),
+                Err(e) => Err(e.to_string()),
+            },
+            other => Err(format!("Unexpected response: {other:?}")),
+        }
     }
 }

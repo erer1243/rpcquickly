@@ -52,6 +52,16 @@ impl Dispatcher {
             .call(args)
             .await?)
     }
+
+    pub fn rpc_functions(&self) -> Vec<RpcFunctionInfo> {
+        self.rpc_functions
+            .iter()
+            .map(|(name, rfn)| RpcFunctionInfo {
+                name: name.clone(),
+                signature: rfn.signature(),
+            })
+            .collect()
+    }
 }
 
 pub type CallResult = Result<Value, DispatchError>;
@@ -127,6 +137,7 @@ where
 
 trait DynamicRpcFunction {
     fn name(&self) -> &str;
+    fn signature(&self) -> Signature;
     fn call(&self, args: Value) -> BoxFuture<Result<Value, CallError>>;
 }
 
@@ -137,6 +148,10 @@ where
 {
     fn name(&self) -> &str {
         self.name()
+    }
+
+    fn signature(&self) -> Signature {
+        self.signature.clone()
     }
 
     fn call(&self, args: Value) -> BoxFuture<Result<Value, CallError>> {
