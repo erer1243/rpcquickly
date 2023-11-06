@@ -1,5 +1,8 @@
 use super::{Request, Response};
-use crate::types::{Decode, DecodeTypeCheck, Encode, InferType};
+use crate::{
+    calling::RpcFunctionInfo,
+    types::{Decode, DecodeTypeCheck, Encode, InferType},
+};
 use async_bincode::{tokio::AsyncBincodeStream, AsyncDestination};
 use futures::{SinkExt, StreamExt};
 use std::io;
@@ -33,6 +36,14 @@ impl Client {
         let resp = self.send_recv(Request::Ping).await?;
         match resp {
             Response::Ping => Ok(()),
+            other => Err(format!("Unexpected response: {other:?}")),
+        }
+    }
+
+    pub async fn rpc_functions(&mut self) -> Result<Vec<RpcFunctionInfo>, String> {
+        let resp = self.send_recv(Request::RpcFunctions).await?;
+        match resp {
+            Response::RpcFunctions(funcs) => Ok(funcs),
             other => Err(format!("Unexpected response: {other:?}")),
         }
     }
