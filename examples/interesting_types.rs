@@ -1,7 +1,6 @@
-use std::{net::SocketAddr, str::FromStr, time::Duration};
-
 use futures::future::BoxFuture;
 use rpcquickly::{Client, RpcFunction, Server, Type, Value};
+use std::time::Duration;
 use tokio::task;
 
 pub struct MultipleChoice(&'static str);
@@ -49,8 +48,7 @@ async fn main() {
     task::spawn(server.serve_tcp(8888));
     tokio::time::sleep(Duration::from_secs_f32(0.01)).await;
 
-    let addr = SocketAddr::from_str("127.0.0.1:8888").unwrap();
-    let client = Client(addr);
+    let mut client = Client::connect("127.0.0.1:8888").await.unwrap();
     client.ping().await.unwrap();
     for ans in ["a", "b", "c", "d"] {
         let retval: String = client.call("MultipleChoice", ans).await.unwrap();

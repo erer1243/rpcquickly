@@ -3,25 +3,25 @@ use crate::types::{Decode, DecodeTypeCheck, Encode, InferType};
 use async_bincode::{tokio::AsyncBincodeStream, AsyncDestination};
 use futures::{SinkExt, StreamExt};
 use std::{io, net::SocketAddr};
-use tokio::{io::BufStream, net::TcpStream};
+use tokio::{
+    io::BufStream,
+    net::{TcpStream, ToSocketAddrs},
+};
 
-pub struct Client(pub SocketAddr);
+pub struct Client(AsyncBincodeStream<BufStream<TcpStream>, Response, Request, AsyncDestination>);
 
 impl Client {
-    async fn connect(
-        &self,
-    ) -> io::Result<AsyncBincodeStream<BufStream<TcpStream>, Response, Request, AsyncDestination>>
-    {
-        let sock = TcpStream::connect(self.0).await?;
+    pub async fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<Client> {
+        let sock = TcpStream::connect(addr).await?;
         let sock = BufStream::new(sock);
         let sock = AsyncBincodeStream::from(sock).for_async();
-        Ok(sock)
+        Ok(Client(sock))
     }
 
-    async fn send_recv(&self, req: Request) -> Result<Response, String> {
-        let mut sock = self.connect().await.map_err(|e| e.to_string())?;
-        sock.send(req).await.map_err(|e| e.to_string())?;
-        let resp = sock
+    async fn send_recv(&mut self, req: Request) -> Result<Response, String> {
+        self.0.send(req).await.map_err(|e| e.to_string())?;
+        let resp = self
+            .0
             .next()
             .await
             .ok_or_else(|| "No response from server".to_string())?
@@ -29,7 +29,7 @@ impl Client {
         Ok(resp)
     }
 
-    pub async fn ping(&self) -> Result<(), String> {
+    pub async fn ping(&mut self) -> Result<(), String> {
         let resp = self.send_recv(Request::Ping).await?;
         match resp {
             Response::Ping => Ok(()),
@@ -37,7 +37,7 @@ impl Client {
         }
     }
 
-    pub async fn call<Domain, Range>(&self, name: &str, args: Domain) -> Result<Range, String>
+    pub async fn call<Domain, Range>(&mut self, name: &str, args: Domain) -> Result<Range, String>
     where
         Domain: Encode + InferType,
         Range: Decode + InferType,
