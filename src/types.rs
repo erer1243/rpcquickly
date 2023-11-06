@@ -1,17 +1,18 @@
+use crate::RpcFunction;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeSet, error::Error, fmt};
+use std::{any::type_name, collections::BTreeSet, error::Error, fmt, sync::Arc};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Type {
     Nil,
     Int,
     String,
-    OneOf(BTreeSet<Value>),
+    OneOf(Arc<BTreeSet<Value>>),
     Any,
 }
 
 impl Type {
-    fn check(&self, val: &Value) -> Result<(), TypeMismatch> {
+    fn check(&self, val: &Value) -> Result<(), TypeMismatchError> {
         match (self, val) {
             // Good type checks
             (Type::Nil, Value::Nil) => (),
@@ -21,7 +22,7 @@ impl Type {
             (Type::Any, _) => (),
 
             // All else fails
-            _ => Err(TypeMismatch::new(self, val))?,
+            _ => Err(TypeMismatchError::rpc_type(self, val))?,
         };
         Ok(())
     }
@@ -37,7 +38,7 @@ impl fmt::Display for Type {
             OneOf(vals) => {
                 f.write_str("OneOf(")?;
                 let mut first = true;
-                for v in vals {
+                for v in &**vals {
                     write!(f, "{v:?}")?;
                     if first {
                         first = false;
@@ -54,21 +55,25 @@ impl fmt::Display for Type {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TypeMismatch(String);
+pub struct TypeMismatchError(String);
 
-impl TypeMismatch {
-    fn new(typ: &Type, val: &Value) -> Self {
-        Self(format!("Type mismatch: {val:?} :/: {typ}"))
+impl TypeMismatchError {
+    fn rpc_type(expected_type: &Type, val: &Value) -> Self {
+        Self(format!("Type mismatch: {val:?} :/: {expected_type}"))
+    }
+
+    fn rust_type<T>(val: &Value) -> Self {
+        Self(format!("Type mismatch: {val:?} -/-> {}", type_name::<T>()))
     }
 }
 
-impl fmt::Display for TypeMismatch {
+impl fmt::Display for TypeMismatchError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(&self.0)
     }
 }
 
-impl Error for TypeMismatch {}
+impl Error for TypeMismatchError {}
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Signature {
@@ -80,30 +85,26 @@ pub struct Signature {
 pub enum Value {
     Nil,
     Int(i64),
-    String(String),
+    String(Arc<String>),
 }
 
 pub trait InferType {
     fn infer_type() -> Type;
 }
 
-pub trait Encode {
-    fn encode(typ: &Type, val: Self) -> Result<Value, TypeMismatch>;
-
-    fn encode_infer(val: Self) -> Value
-    where
-        Self: InferType + Sized,
-    {
-        Self::encode(&Self::infer_type(), val).expect("Inferred type was wrong")
-    }
+pub trait Decode: Sized {
+    fn decode(val: Value) -> Option<Self>;
 }
 
-pub trait Decode: Sized {
-    fn decode(typ: &Type, val: Value) -> Result<Self, TypeMismatch>;
+pub trait Encode {
+    fn encode(val: Self) -> Value;
 }
 
 macro_rules! impl_encode_decode {
-    ($rust_type:ty, $infer_type:expr, $encode_name:pat => $encode_expr:expr, $($from_rpc_arm:tt)*) => {
+    ($rust_type:ty, $infer_type:expr,
+     $encode_pat:pat => $encode_expr:expr,
+     $decode_pat:pat => $decode_expr:expr
+    ) => {
         impl InferType for $rust_type {
             fn infer_type() -> Type {
                 $infer_type
@@ -111,21 +112,18 @@ macro_rules! impl_encode_decode {
         }
 
         impl Encode for $rust_type {
-            fn encode(typ: &Type, $encode_name: $rust_type) -> Result<Value, TypeMismatch> {
-                let val = $encode_expr;
-                typ.check(&val)?;
-                Ok(val)
+            fn encode($encode_pat: $rust_type) -> Value {
+                $encode_expr
             }
         }
 
         impl Decode for $rust_type {
-            fn decode(typ: &Type, val: Value) -> Result<Self, TypeMismatch> {
-                typ.check(&val)?;
-                Ok(match val {
-                    $($from_rpc_arm)*,
+            fn decode(val: Value) -> Option<Self> {
+                match val {
+                    $decode_pat => Some($decode_expr),
                     #[allow(unreachable_patterns)]
-                    _ => unreachable!("Type checking is incorrect")
-                })
+                    _ => None,
+                }
             }
         }
     };
@@ -133,7 +131,7 @@ macro_rules! impl_encode_decode {
 
 impl_encode_decode!((), Type::Nil, () => Value::Nil, Value::Nil => ());
 impl_encode_decode!(i64, Type::Int, n => Value::Int(n), Value::Int(n) => n);
-impl_encode_decode!(String, Type::String, s => Value::String(s), Value::String(s) => s);
+impl_encode_decode!(String, Type::String, s => Value::String(s.into()), Value::String(s) => clone_or_take_arc(s));
 impl_encode_decode!(Value, Type::Any, v => v, v => v);
 
 impl InferType for &str {
@@ -143,9 +141,66 @@ impl InferType for &str {
 }
 
 impl Encode for &str {
-    fn encode(typ: &Type, s: Self) -> Result<Value, TypeMismatch> {
-        let val = Value::String(s.to_string());
-        typ.check(&val)?;
+    fn encode(s: Self) -> Value {
+        Value::String(Arc::new(s.to_string()))
+    }
+}
+
+pub(crate) trait InferSignature {
+    fn infer_signature() -> Signature;
+}
+
+impl<RFn> InferSignature for RFn
+where
+    RFn: RpcFunction,
+    RFn::Domain: InferType,
+    RFn::Range: InferType,
+{
+    fn infer_signature() -> Signature {
+        Signature {
+            domain: RFn::Domain::infer_type(),
+            range: RFn::Range::infer_type(),
+        }
+    }
+}
+
+fn clone_or_take_arc<T: Clone>(arc: Arc<T>) -> T {
+    match Arc::try_unwrap(arc) {
+        Ok(t) => t,
+        Err(arc) => (*arc).clone(),
+    }
+}
+
+pub trait DecodeTypeCheck: Decode {
+    fn decode_typeck(ty: &Type, val: Value) -> Result<Self, TypeMismatchError>;
+}
+
+pub trait EncodeTypeCheck: Encode {
+    fn encode_typeck(ty: &Type, val: Self) -> Result<Value, TypeMismatchError>;
+    fn encode_infer(val: Self) -> Value
+    where
+        Self: InferType + Sized;
+}
+
+impl<T: Decode> DecodeTypeCheck for T {
+    fn decode_typeck(ty: &Type, val: Value) -> Result<Self, TypeMismatchError> {
+        ty.check(&val)?;
+        let val_ = val.clone();
+        T::decode(val).ok_or_else(|| TypeMismatchError::rust_type::<T>(&val_))
+    }
+}
+
+impl<T: Encode> EncodeTypeCheck for T {
+    fn encode_typeck(ty: &Type, val: Self) -> Result<Value, TypeMismatchError> {
+        let val = Self::encode(val);
+        ty.check(&val)?;
         Ok(val)
+    }
+
+    fn encode_infer(val: Self) -> Value
+    where
+        Self: InferType + Sized,
+    {
+        Self::encode_typeck(&Self::infer_type(), val).expect("Inferred type was wrong")
     }
 }

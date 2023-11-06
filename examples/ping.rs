@@ -1,10 +1,7 @@
 use std::{net::SocketAddr, str::FromStr, time::Duration};
 
 use futures::future::{ready, Ready};
-use rpcquickly::{
-    net::{client::Client, server::Server},
-    RpcFunction,
-};
+use rpcquickly::{Client, RpcFunction, Server};
 use tokio::task;
 
 pub struct Hello;
@@ -32,6 +29,7 @@ async fn main() {
 
     let addr = SocketAddr::from_str("127.0.0.1:8888").unwrap();
     let client = Client(addr);
-    client.ping().await;
-    client.call("Hello", "world").await;
+    client.ping().await.unwrap();
+    let retval: String = client.call("Hello", "world").await.unwrap();
+    println!("{retval}");
 }

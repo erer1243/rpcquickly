@@ -1,5 +1,5 @@
 use super::{Request, Response};
-use crate::types::{Decode, Encode, InferType};
+use crate::types::{Decode, DecodeTypeCheck, Encode, InferType};
 use async_bincode::{tokio::AsyncBincodeStream, AsyncDestination};
 use futures::{SinkExt, StreamExt};
 use std::{io, net::SocketAddr};
@@ -44,12 +44,14 @@ impl Client {
     {
         let req = Request::Call {
             name: name.to_string(),
-            args: Domain::encode_infer(args),
+            args: Domain::encode(args),
         };
         let resp = self.send_recv(req).await?;
         match resp {
             Response::Call(res) => match res {
-                Ok(val) => Range::decode(&Range::infer_type(), val).map_err(|e| e.to_string()),
+                Ok(val) => {
+                    Range::decode_typeck(&Range::infer_type(), val).map_err(|e| e.to_string())
+                }
                 Err(e) => Err(e.to_string()),
             },
             other => Err(format!("Unexpected response: {other:?}")),
