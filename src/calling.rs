@@ -7,7 +7,7 @@ use crate::{
 };
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, sync::Arc};
+use std::{any::type_name, collections::BTreeMap, sync::Arc};
 use thiserror::Error;
 
 /// Maps [`RpcFunction`] names to a [`CallableRpcFunction`].
@@ -109,7 +109,11 @@ where
     RFn::Domain: Send,
 {
     fn new(rpc_function: RFn) -> Self {
-        let (domain, range) = rpc_function.signature().unwrap();
+        let name = rpc_function.name();
+        let type_name = type_name::<RFn>();
+        let (domain, range) = rpc_function
+            .signature()
+            .unwrap_or_else(|| panic!("No signature provided for RPC Function {name} ({type_name}). See the docs of RpcFunction::signature()"));
         let signature = Signature { domain, range };
         Self {
             rpc_function,
