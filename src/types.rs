@@ -12,6 +12,7 @@ pub enum Type {
 }
 
 impl Type {
+    /// *The* type checker.
     fn check(&self, val: &Value) -> Result<(), TypeMismatchError> {
         match (self, val) {
             // Good type checks
@@ -26,6 +27,15 @@ impl Type {
         };
         Ok(())
     }
+
+    pub fn one_of<I, V>(vals: I) -> Type
+    where
+        I: IntoIterator<Item = V>,
+        V: Into<Value>,
+    {
+        let vals_set = vals.into_iter().map(|v| v.into()).collect();
+        Type::OneOf(Arc::new(vals_set))
+    }
 }
 
 impl fmt::Display for Type {
@@ -39,12 +49,12 @@ impl fmt::Display for Type {
                 f.write_str("OneOf(")?;
                 let mut first = true;
                 for v in &**vals {
-                    write!(f, "{v:?}")?;
                     if first {
                         first = false;
                     } else {
                         f.write_str(", ")?;
                     }
+                    write!(f, "{v}")?;
                 }
                 f.write_str(")")?;
             }
@@ -59,11 +69,11 @@ pub struct TypeMismatchError(String);
 
 impl TypeMismatchError {
     fn rpc_type(expected_type: &Type, val: &Value) -> Self {
-        Self(format!("Type mismatch: {val:?} :/: {expected_type}"))
+        Self(format!("{val} :/: {expected_type}"))
     }
 
     fn rust_type<T>(val: &Value) -> Self {
-        Self(format!("Type mismatch: {val:?} -/-> {}", type_name::<T>()))
+        Self(format!("{val} -/-> {}", type_name::<T>()))
     }
 }
 
@@ -86,6 +96,41 @@ pub enum Value {
     Nil,
     Int(i64),
     String(Arc<String>),
+}
+
+impl From<()> for Value {
+    fn from((): ()) -> Self {
+        Value::Nil
+    }
+}
+
+impl From<i64> for Value {
+    fn from(n: i64) -> Self {
+        Value::Int(n)
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Self {
+        Value::String(Arc::new(s))
+    }
+}
+
+impl From<&str> for Value {
+    fn from(s: &str) -> Self {
+        s.to_owned().into()
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Value::*;
+        match self {
+            Nil => f.write_str("<Nil>"),
+            Int(n) => write!(f, "<{n}>"),
+            String(s) => write!(f, r#"<"{s}">"#),
+        }
+    }
 }
 
 pub trait InferType {

@@ -90,7 +90,7 @@ pub enum CallError {
     #[error("domain type mismatch: {0}")]
     Domain(TypeMismatchError),
 
-    #[error("range type mismatch: {0}")]
+    #[error("(BUG in RPC function) range type mismatch: {0}")]
     Range(TypeMismatchError),
 }
 
