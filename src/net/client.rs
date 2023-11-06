@@ -2,7 +2,7 @@ use super::{Request, Response};
 use crate::types::{Decode, DecodeTypeCheck, Encode, InferType};
 use async_bincode::{tokio::AsyncBincodeStream, AsyncDestination};
 use futures::{SinkExt, StreamExt};
-use std::{io, net::SocketAddr};
+use std::io;
 use tokio::{
     io::BufStream,
     net::{TcpStream, ToSocketAddrs},
