@@ -10,6 +10,8 @@ use std::future::Future;
 pub use net::{client::Client, server::Server};
 pub use types::{Decode, Encode, InferType, Type, Value};
 
+pub use futures::future::BoxFuture;
+
 /// A single RPC function.
 pub trait RpcFunction {
     /// The parameter type of the function
