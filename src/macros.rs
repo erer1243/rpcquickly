@@ -40,4 +40,10 @@ macro_rules! call {
             Box::pin(body)
         }
     };
+
+    (async fn call(& $self:ident, $domain_ident:ident : $domain_ty:ty) { $($body:tt)* }) => {
+        $crate::call! {
+            async fn call(& $self, $domain_ident : $domain_ty) -> () { $($body)* }
+        }
+    };
 }

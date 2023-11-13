@@ -16,7 +16,7 @@ impl RpcFunction for Hello {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let mut server = Server::new();
-    server.add(Hello);
+    server.insert(Hello);
     task::spawn(server.serve_tcp(8888));
 
     // Allow server task to spin up

@@ -30,7 +30,7 @@ impl RpcFunction for MultipleChoice {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let mut server = Server::new();
-    server.add(MultipleChoice::new());
+    server.insert(MultipleChoice::new());
     task::spawn(server.serve_tcp(8888));
 
     task::yield_now().await;
