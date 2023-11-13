@@ -1,4 +1,3 @@
-use crate::RpcFunction;
 use serde::{Deserialize, Serialize};
 use std::{any::type_name, collections::BTreeSet, error::Error, fmt, sync::Arc};
 
@@ -176,7 +175,7 @@ macro_rules! impl_encode_decode {
 
 impl_encode_decode!((), Type::Nil, () => Value::Nil, Value::Nil => ());
 impl_encode_decode!(i64, Type::Int, n => Value::Int(n), Value::Int(n) => n);
-impl_encode_decode!(String, Type::String, s => Value::String(s.into()), Value::String(s) => clone_or_take_arc(s));
+impl_encode_decode!(String, Type::String, s => Value::String(s.into()), Value::String(s) => arc_take_or_clone(s));
 impl_encode_decode!(Value, Type::Any, v => v, v => v);
 
 impl InferType for &str {
@@ -191,25 +190,7 @@ impl Encode for &str {
     }
 }
 
-pub(crate) trait InferSignature {
-    fn infer_signature() -> Signature;
-}
-
-impl<RFn> InferSignature for RFn
-where
-    RFn: RpcFunction,
-    RFn::Domain: InferType,
-    RFn::Range: InferType,
-{
-    fn infer_signature() -> Signature {
-        Signature {
-            domain: RFn::Domain::infer_type(),
-            range: RFn::Range::infer_type(),
-        }
-    }
-}
-
-fn clone_or_take_arc<T: Clone>(arc: Arc<T>) -> T {
+fn arc_take_or_clone<T: Clone>(arc: Arc<T>) -> T {
     match Arc::try_unwrap(arc) {
         Ok(t) => t,
         Err(arc) => (*arc).clone(),

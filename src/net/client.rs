@@ -1,6 +1,6 @@
 use super::{Request, Response};
 use crate::{
-    calling::RpcFunctionInfo,
+    dispatcher::RpcFunctionInfo,
     types::{Decode, DecodeTypeCheck, Encode, InferType},
 };
 use async_bincode::{tokio::AsyncBincodeStream, AsyncDestination};

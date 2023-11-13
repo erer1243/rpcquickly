@@ -1,43 +1,29 @@
-use futures::future::BoxFuture;
-use rpcquickly::{Client, RpcFunction, Server, Type, Value};
-use std::time::Duration;
+use rpcquickly::{call, name, signature, Client, RpcFunction, Server, Type, Value};
 use tokio::task;
 
-pub struct MultipleChoice(&'static str);
+pub struct MultipleChoice {
+    answer: &'static str,
+}
 
 impl MultipleChoice {
     fn new() -> Self {
-        let ans = ["a", "b", "c", "d"][rand::random::<usize>() % 4];
-        println!("The correct answer will be {ans}");
-        Self(ans)
+        let answer = ["a", "b", "c", "d"][rand::random::<usize>() % 4];
+        println!("The correct answer will be {answer}");
+        Self { answer }
     }
 }
 
 impl RpcFunction for MultipleChoice {
-    type Domain = String;
-    type Range = String;
-    type RangeFut = BoxFuture<'static, Self::Range>;
-
-    fn name(&self) -> &str {
-        "MultipleChoice"
-    }
-
-    fn call(&self, guess: String) -> Self::RangeFut {
-        let answer = self.0;
-        Box::pin(async move {
-            if guess == answer {
+    name!("MultipleChoice");
+    signature!(Type::one_of(["a", "b", "c", "d"]) => Type::one_of(["right", "wrong"]));
+    call! {
+        async fn call(&self, guess: String) -> String {
+            if guess == self.answer {
                 "right".into()
             } else {
                 "wrong".into()
             }
-        })
-    }
-
-    fn signature(&self) -> Option<(Type, Type)> {
-        Some((
-            Type::one_of(["a", "b", "c", "d"]),
-            Type::one_of(["right", "wrong"]),
-        ))
+        }
     }
 }
 
@@ -46,7 +32,8 @@ async fn main() {
     let mut server = Server::new();
     server.add(MultipleChoice::new());
     task::spawn(server.serve_tcp(8888));
-    tokio::time::sleep(Duration::from_secs_f32(0.01)).await;
+
+    task::yield_now().await;
 
     let mut client = Client::connect("127.0.0.1:8888").await.unwrap();
     client.ping().await.unwrap();

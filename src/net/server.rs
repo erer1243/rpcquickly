@@ -1,7 +1,6 @@
 use crate::{
-    calling::Dispatcher,
+    dispatcher::Dispatcher,
     net::{Request, Response},
-    types::InferType,
     RpcFunction,
 };
 use async_bincode::tokio::AsyncBincodeStream;
@@ -26,12 +25,6 @@ impl Server {
             where
                 RFn: RpcFunction + Send + Sync + 'static,
                 RFn::Domain: Send;
-
-            pub fn add_infer_signature<RFn>(&mut self, rfn: RFn)
-            where
-                RFn: RpcFunction + Send + Sync + 'static,
-                RFn::Domain: InferType + Send,
-                RFn::Range: InferType;
         }
     }
 
