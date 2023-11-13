@@ -7,6 +7,8 @@ mod net;
 mod types;
 
 pub use futures::future::BoxFuture;
+
+pub use dispatcher::RpcFunctionInfo;
 pub use net::{client::Client, server::Server};
 pub use types::{Decode, Encode, InferType, Signature, Type, Value};
 
@@ -17,10 +19,6 @@ pub trait RpcFunction {
 
     /// The return type of the function
     type Range: Encode;
-
-    // /// The future that represents one call of the function,
-    // /// i.e. one that resolves to [`Range`](Self::Range).
-    // type RangeFut: Future<Output = Self::Range> + Send;
 
     /// Provide a name to identify the function over-the-wire.
     fn name(&self) -> &str;
