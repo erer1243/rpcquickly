@@ -198,18 +198,18 @@ fn arc_take_or_clone<T: Clone>(arc: Arc<T>) -> T {
 }
 
 pub trait DecodeTypeCheck: Decode {
-    fn decode_typeck(ty: &Type, val: Value) -> Result<Self, TypeMismatchError>;
+    fn decode_typecked(ty: &Type, val: Value) -> Result<Self, TypeMismatchError>;
 }
 
 pub trait EncodeTypeCheck: Encode {
-    fn encode_typeck(ty: &Type, val: Self) -> Result<Value, TypeMismatchError>;
+    fn encode_typecked(ty: &Type, val: Self) -> Result<Value, TypeMismatchError>;
     fn encode_infer(val: Self) -> Value
     where
         Self: InferType + Sized;
 }
 
 impl<T: Decode> DecodeTypeCheck for T {
-    fn decode_typeck(ty: &Type, val: Value) -> Result<Self, TypeMismatchError> {
+    fn decode_typecked(ty: &Type, val: Value) -> Result<Self, TypeMismatchError> {
         ty.check(&val)?;
         let val_ = val.clone();
         T::decode(val).ok_or_else(|| TypeMismatchError::rust_type::<T>(&val_))
@@ -217,7 +217,7 @@ impl<T: Decode> DecodeTypeCheck for T {
 }
 
 impl<T: Encode> EncodeTypeCheck for T {
-    fn encode_typeck(ty: &Type, val: Self) -> Result<Value, TypeMismatchError> {
+    fn encode_typecked(ty: &Type, val: Self) -> Result<Value, TypeMismatchError> {
         let val = Self::encode(val);
         ty.check(&val)?;
         Ok(val)
@@ -227,6 +227,6 @@ impl<T: Encode> EncodeTypeCheck for T {
     where
         Self: InferType + Sized,
     {
-        Self::encode_typeck(&Self::infer_type(), val).expect("Inferred type was wrong")
+        Self::encode_typecked(&Self::infer_type(), val).expect("Inferred type was wrong")
     }
 }

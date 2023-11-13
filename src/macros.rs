@@ -1,4 +1,13 @@
 #[macro_export]
+macro_rules! name {
+    ($name:expr) => {
+        fn name(&self) -> &str {
+            $name
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! signature {
     ($domain:expr => $range:expr) => {
         fn signature(&self) -> $crate::Signature {
@@ -29,15 +38,6 @@ macro_rules! call {
                 $($body)*
             };
             Box::pin(body)
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! name {
-    ($name:expr) => {
-        fn name(&self) -> &str {
-            $name
         }
     };
 }

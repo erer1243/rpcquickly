@@ -7,42 +7,41 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, sync::Arc};
 use thiserror::Error;
 
-/// Maps [`RpcFunction`] names to a [`CallableRpcFunction`].
-///
-/// Functions can be registered with [`add`] or [`add_infer_signature`].
-/// Functions can be called via [`call`].
-/// A list of functions can be retrieved with [`rpc_functions`].
+/// The name and signature of an rpc function
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RpcFunctionInfo {
+    pub name: String,
+    pub signature: Signature,
+}
+
+/// A map from name to a dynamically-type-checked rpc function.
+/// Held rpc functions can be called or queried
 #[derive(Default)]
 pub(crate) struct Dispatcher {
     rpc_functions: BTreeMap<String, Arc<dyn DynamicRpcFunction + Send + Sync + 'static>>,
 }
 
 impl Dispatcher {
-    pub(crate) fn add<RFn>(&mut self, rpc_function: RFn)
+    pub(crate) fn insert<RFn>(&mut self, rpc_function: RFn)
     where
         RFn: RpcFunction + Send + Sync + 'static,
         RFn::Domain: Send,
     {
-        // let signature = match rpc_function.signature() {
-        //     Some((domain, range)) => Signature { domain, range },
-        //     None => infer_signature_or_panic::<RFn>(),
-        // };
+        let name = rpc_function.name().to_owned();
         let signature = rpc_function.signature();
-        let rfws = TypedRpcFunction {
-            rpc_function,
+        let rfws = Arc::new(UntypedRpcFunction {
             signature,
-        };
-        let name = rfws.name().to_owned();
-        let dyn_rfn = Arc::new(rfws);
-        self.rpc_functions.insert(name, dyn_rfn);
+            rpc_function,
+        });
+        self.rpc_functions.insert(name, rfws);
     }
 
-    pub(crate) async fn call(&self, name: &str, args: Value) -> CallResult {
+    pub(crate) async fn call(&self, name: &str, args: Value) -> Result<Value, DispatchError> {
         Ok(self
             .rpc_functions
             .get(name)
             .ok_or(DispatchError::NoSuchFunction)?
-            .call(args)
+            .call_typecked(args)
             .await?)
     }
 
@@ -57,59 +56,40 @@ impl Dispatcher {
     }
 }
 
-pub(crate) type CallResult = Result<Value, DispatchError>;
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct RpcFunctionInfo {
-    name: String,
-    signature: Signature,
-}
-
-struct TypedRpcFunction<RFn>
-where
-    RFn: RpcFunction + Send + Sync,
-    RFn::Domain: Send,
-{
-    rpc_function: RFn,
-    signature: Signature,
-}
-
-impl<RFn> TypedRpcFunction<RFn>
-where
-    RFn: RpcFunction + Send + Sync,
-    RFn::Domain: Send,
-{
-    async fn call(&self, args: Value) -> Result<Value, CallError> {
-        let Signature { domain, range } = &self.signature;
-        let decoded_args = RFn::Domain::decode_typeck(domain, args).map_err(CallError::Domain)?;
-        let retval = self.rpc_function.call(decoded_args).await;
-        let encoded_retval = RFn::Range::encode_typeck(range, retval).map_err(CallError::Range)?;
-        Ok(encoded_retval)
-    }
-}
-
-/// A type-erased version of the main trait, RpcFunction
+/// A type-erased version of the main trait, RpcFunction.
+/// Object-safe, so it can be stored as a trait object along with other
+/// `RpcFunction`s in `Dispatcher`.
 trait DynamicRpcFunction {
-    fn name(&self) -> &str;
     fn signature(&self) -> &Signature;
-    fn call(&self, args: Value) -> BoxFuture<Result<Value, CallError>>;
+    fn call_typecked(&self, args: Value) -> BoxFuture<Result<Value, CallError>>;
 }
 
-impl<RFn> DynamicRpcFunction for TypedRpcFunction<RFn>
+/// A struct to implement DynamicRpcFunction
+struct UntypedRpcFunction<RFn> {
+    signature: Signature,
+    rpc_function: RFn,
+}
+
+impl<RFn> DynamicRpcFunction for UntypedRpcFunction<RFn>
 where
     RFn: RpcFunction + Send + Sync,
     RFn::Domain: Send,
 {
-    fn name(&self) -> &str {
-        self.rpc_function.name()
-    }
-
     fn signature(&self) -> &Signature {
         &self.signature
     }
 
-    fn call(&self, args: Value) -> BoxFuture<Result<Value, CallError>> {
-        Box::pin(self.call(args))
+    fn call_typecked(&self, args: Value) -> BoxFuture<Result<Value, CallError>> {
+        let body = async move {
+            let Signature { domain, range } = &self.signature;
+            let decoded_args =
+                RFn::Domain::decode_typecked(domain, args).map_err(CallError::Domain)?;
+            let retval = self.rpc_function.call(decoded_args).await;
+            let encoded_retval =
+                RFn::Range::encode_typecked(range, retval).map_err(CallError::Range)?;
+            Ok(encoded_retval)
+        };
+        Box::pin(body)
     }
 }
 

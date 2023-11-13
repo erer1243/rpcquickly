@@ -1,6 +1,3 @@
-// #![warn(unused_crate_dependencies)]
-// #![allow(unused_imports, dead_code, unused_variables)]
-
 mod dispatcher;
 mod macros;
 mod net;

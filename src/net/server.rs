@@ -4,7 +4,6 @@ use crate::{
     RpcFunction,
 };
 use async_bincode::tokio::AsyncBincodeStream;
-use delegate::delegate;
 use futures::{SinkExt, StreamExt};
 use std::{io, net::Ipv4Addr, sync::Arc};
 use tokio::{io::BufStream, net::TcpListener, task};
@@ -19,21 +18,19 @@ impl Server {
         Self::default()
     }
 
-    delegate! {
-        to self.dispatcher {
-            pub fn add<RFn>(&mut self, rfn: RFn)
-            where
-                RFn: RpcFunction + Send + Sync + 'static,
-                RFn::Domain: Send;
-        }
+    pub fn insert<RFn>(&mut self, rfn: RFn)
+    where
+        RFn: RpcFunction + Send + Sync + 'static,
+        RFn::Domain: Send,
+    {
+        self.dispatcher.insert(rfn);
     }
 
     async fn handle_request(self: &Arc<Self>, req: Request) -> Response {
         match req {
             Request::Ping => Response::Ping,
-            Request::Call { name, args } => Response::Call(self.dispatcher.call(&name, args).await),
             Request::RpcFunctions => Response::RpcFunctions(self.dispatcher.rpc_functions()),
-            // _ => Response::Other("unimplemented".to_owned()),
+            Request::Call { name, args } => Response::Call(self.dispatcher.call(&name, args).await),
         }
     }
 

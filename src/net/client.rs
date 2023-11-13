@@ -13,6 +13,15 @@ use tokio::{
 
 pub struct Client(AsyncBincodeStream<BufStream<TcpStream>, Response, Request, AsyncDestination>);
 
+macro_rules! expect_response {
+    ($resp_expr:expr, $resp_pat:pat => $body:expr) => {
+        match $resp_expr {
+            $resp_pat => Ok($body),
+            other => Err(format!("Unexpected response: {other:?}")),
+        }
+    };
+}
+
 impl Client {
     pub async fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<Client> {
         let sock = TcpStream::connect(addr).await?;
@@ -34,18 +43,12 @@ impl Client {
 
     pub async fn ping(&mut self) -> Result<(), String> {
         let resp = self.send_recv(Request::Ping).await?;
-        match resp {
-            Response::Ping => Ok(()),
-            other => Err(format!("Unexpected response: {other:?}")),
-        }
+        expect_response!(resp, Response::Ping => ())
     }
 
     pub async fn rpc_functions(&mut self) -> Result<Vec<RpcFunctionInfo>, String> {
         let resp = self.send_recv(Request::RpcFunctions).await?;
-        match resp {
-            Response::RpcFunctions(funcs) => Ok(funcs),
-            other => Err(format!("Unexpected response: {other:?}")),
-        }
+        expect_response!(resp, Response::RpcFunctions(funcs) => funcs)
     }
 
     pub async fn call<Domain, Range>(&mut self, name: &str, args: Domain) -> Result<Range, String>
@@ -58,14 +61,11 @@ impl Client {
             args: Domain::encode(args),
         };
         let resp = self.send_recv(req).await?;
-        match resp {
-            Response::Call(res) => match res {
-                Ok(val) => {
-                    Range::decode_typeck(&Range::infer_type(), val).map_err(|e| e.to_string())
-                }
-                Err(e) => Err(e.to_string()),
-            },
-            other => Err(format!("Unexpected response: {other:?}")),
-        }
+        expect_response!(resp, Response::Call(res) => match res {
+            Ok(val) => {
+                Range::decode_typecked(&Range::infer_type(), val).map_err(|e| e.to_string())?
+            }
+            Err(e) => return Err(e.to_string()),
+        })
     }
 }

@@ -2,7 +2,7 @@ pub mod client;
 pub mod server;
 
 use crate::{
-    dispatcher::{CallResult, RpcFunctionInfo},
+    dispatcher::{DispatchError, RpcFunctionInfo},
     types::Value,
 };
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,5 @@ pub(crate) enum Request {
 pub(crate) enum Response {
     Ping,
     RpcFunctions(Vec<RpcFunctionInfo>),
-    Call(CallResult),
-    Other(String),
+    Call(Result<Value, DispatchError>),
 }
