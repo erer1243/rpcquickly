@@ -125,9 +125,9 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Value::*;
         match self {
-            Nil => f.write_str("<Nil>"),
-            Int(n) => write!(f, "<{n}>"),
-            String(s) => write!(f, r#"<"{s}">"#),
+            Nil => f.write_str("Nil"),
+            Int(n) => write!(f, "{n}"),
+            String(s) => write!(f, r#""{s}""#),
         }
     }
 }

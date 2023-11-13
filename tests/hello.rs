@@ -14,6 +14,7 @@ impl RpcFunction for Hello {
 }
 
 #[tokio::main(flavor = "current_thread")]
+#[test]
 async fn main() {
     let mut server = Server::new();
     server.insert(Hello);

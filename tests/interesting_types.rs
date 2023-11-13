@@ -28,6 +28,7 @@ impl RpcFunction for MultipleChoice {
 }
 
 #[tokio::main(flavor = "current_thread")]
+#[test]
 async fn main() {
     let mut server = Server::new();
     server.insert(MultipleChoice::new());
@@ -37,12 +38,25 @@ async fn main() {
 
     let mut client = Client::connect("127.0.0.1:8888").await.unwrap();
     client.ping().await.unwrap();
+
+    let mut rights = 0;
+    let mut wrongs = 0;
+
     for ans in ["a", "b", "c", "d"] {
         let retval: String = client.call("MultipleChoice", ans).await.unwrap();
-        println!("ans = {retval}");
+        println!("{ans} is {retval}");
+
+        if retval == "right" {
+            rights += 1;
+        } else {
+            wrongs += 1;
+        }
     }
 
-    for bad_guess in [Value::from("x"), 10.into(), ().into()] {
+    assert_eq!(rights, 1);
+    assert_eq!(wrongs, 3);
+
+    for bad_guess in [Value::from("x"), Value::from(10), Value::from(())] {
         let err = client
             .call::<_, Value>("MultipleChoice", bad_guess)
             .await
